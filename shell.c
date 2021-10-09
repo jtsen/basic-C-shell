@@ -11,8 +11,9 @@
 #define MAX_COMMAND_LENGTH (1001)
 #define MAX_DIRECTORY_LENGTH (1001)
 #define MAX_ARGS (500)
+#define MAX_SUSPENDED_JOBS (100)
 
-int call (char* args[]){
+pid_t call (char* args[]){
     pid_t pid = fork();
     if (pid == -1){
         perror("fork error");
@@ -29,15 +30,18 @@ int call (char* args[]){
     }
     else{
         //https://stackoverflow.com/questions/21248840/example-of-waitpid-in-use
-        waitpid(pid, &status, 0);
+        waitpid(pid, &status, WUNTRACED);
         if(WIFSIGNALED(status)){
-            return -1;
+            return 0;
         }
         else if(WEXITSTATUS(status)){
+            return pid;
+        }
+        else if(WIFEXITED(status)){
             return 0;
         }
     }
-    return 1;
+    return 0;
 }
 
 void shell_prompt(){
@@ -95,13 +99,20 @@ char** get_args(char ** parsed_args){
     return parsed_args;
 }
 
-void handler(int sig){}
+void handler(int sig){printf("\n");}
 
 int main(int argc, const char *const *argv){
     char arguments[MAX_COMMAND_LENGTH];
     char* tokens;
     char* parsed_args[MAX_ARGS];
+    pid_t suspended_jobs[MAX_SUSPENDED_JOBS] = {0};
+    char* suspended_jobs_names[MAX_ARGS] = {NULL};
+    int suspended_jobs_counter = 0;
     signal(SIGINT,handler);
+    signal(SIGQUIT,handler);
+    signal(SIGTSTP,handler);
+
+    // signal(SIGTERM,handler);
     while(1){
 
         shell_prompt();
@@ -122,18 +133,47 @@ int main(int argc, const char *const *argv){
                 continue;
             }
             else{
-                printf("Error: invalid command\n");
+                fprintf(stderr, "Error: invalid command\n");
                 continue;
             }
         }
         else if(strcmp(parsed_args[0], "exit")==0){
             break;
         }
+        else if(strcmp(parsed_args[0],"jobs")==0){
 
-        int call_res = call(parsed_args);
+            for(int i = 0; i<suspended_jobs_counter; ++i){
+                printf("[%d] pid: %ld command: %s\n", i+1, suspended_jobs[i], suspended_jobs_names[i]);
+            }
+            continue;
+            
+        }
+        else if(strcmp(parsed_args[0], "fg")==0){
+            if (parsed_args[0] && parsed_args[1] && !parsed_args[2]){
+
+            }
+            else if(parsed_args[0] && !parsed_args[1]){
+
+            }
+            else{
+                //https://stackoverflow.com/questions/39002052/how-i-can-print-to-stderr-in-c
+                fprintf(stderr, "Error: invalid command\n");
+            }
+        }
+        else{
+            pid_t call_res = call(parsed_args);
+            if(call_res){
+                char * temp = malloc(sizeof(char)*strlen(parsed_args[0]));
+                strcpy(temp, parsed_args[0]);
+                suspended_jobs[suspended_jobs_counter] = call_res;
+                suspended_jobs_names[suspended_jobs_counter] = temp;
+                suspended_jobs_counter++;
+            }
+        }
+
         free_copied_args(parsed_args, NULL);
     
     }
-    free_copied_args(parsed_args, NULL);
+    free_copied_args(parsed_args, suspended_jobs_names, NULL);
     return 0;
 }
