@@ -34,8 +34,11 @@ pid_t call (char* args[]){
         if(WIFSIGNALED(status)){
             return 0;
         }
-        else if(WEXITSTATUS(status)){
+        else if(WIFSTOPPED(status)){
             return pid;
+        }
+        else if(WEXITSTATUS(status)){
+            return 0;
         }
         else if(WIFEXITED(status)){
             return 0;
